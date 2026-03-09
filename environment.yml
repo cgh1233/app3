@@ -4,7 +4,7 @@ channels:
   - conda-forge
 
 dependencies:
-  - python=3.10
+  - python=3.13
   - rdkit
   - numpy
   - pandas
@@ -13,3 +13,4 @@ dependencies:
   - pip
   - pip:
       - streamlit==1.40.1
+
