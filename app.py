@@ -1,5 +1,3 @@
-import sys
-st.write(sys.version)
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -193,3 +191,4 @@ if st.button("Predict Umami Probability"):
     # 概率进度条
 
     st.progress(float(prob))
+
