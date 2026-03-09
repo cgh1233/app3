@@ -162,6 +162,12 @@ smiles = st.text_input(
 
 
 # ===============================
+# 最佳阈值
+# ===============================
+best_threshold = 0.374
+
+
+# ===============================
 # 预测
 # ===============================
 if st.button("Predict Umami Probability"):
@@ -179,16 +185,38 @@ if st.button("Predict Umami Probability"):
     # 选择特征
     X = feat_df[selected_features].fillna(0)
 
+    # ===============================
     # 预测概率
+    # ===============================
     prob = model.predict_proba(X)[0,1]
 
+    # ===============================
+    # 阈值判断
+    # ===============================
+    if prob >= best_threshold:
+        label = "Umami"
+        color = "#27ae60"
+    else:
+        label = "Non-Umami"
+        color = "#c0392b"
+
+
+    # ===============================
     # 输出概率
+    # ===============================
     st.markdown(
-        f'<div class="result-box">Umami probability: {prob:.4f}</div>',
+        f'''
+        <div class="result-box">
+        Umami probability: {prob:.4f}<br><br>
+        Best threshold: {best_threshold}<br><br>
+        Prediction: <span style="color:{color}">{label}</span>
+        </div>
+        ''',
         unsafe_allow_html=True
     )
 
+    # ===============================
     # 概率进度条
-
+    # ===============================
     st.progress(float(prob))
 
