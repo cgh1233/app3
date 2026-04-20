@@ -39,7 +39,7 @@ remover = SaltRemover.SaltRemover()
 # ===============================
 def smiles_to_features(smiles):
 
-    mol = Chem.MolFromSmiles(smiles)
+    mol = Chem.MolFromSmiles(str(smiles))
 
     if mol is None:
         return None
@@ -75,32 +75,42 @@ selected_features = [
 best_threshold = 0.374
 
 # ===============================
-# 文件上传（CSV）
+# 上传CSV
 # ===============================
-uploaded_file = st.file_uploader(
-    "Upload CSV file",
-    type=["csv"]
-)
+uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
 
 if uploaded_file:
 
-    df = pd.read_csv(uploaded_file)
+    try:
+        df = pd.read_csv(uploaded_file, encoding="utf-8")
+    except:
+        df = pd.read_csv(uploaded_file, encoding="gbk")
 
-    # 清洗列名
+    # ===============================
+    # 列名清洗（关键）
+    # ===============================
     df.columns = df.columns.str.strip()
 
-    # 自动识别SMILES列
-    if "canonical SMILES" in df.columns:
-        smiles_col = "canonical SMILES"
-    elif "SMILES" in df.columns:
-        smiles_col = "SMILES"
+    st.write("Detected columns:", df.columns)
+
+    # ===============================
+    # 自动识别SMILES列（最稳）
+    # ===============================
+    cols_lower = [c.lower() for c in df.columns]
+
+    if "canonical smiles" in cols_lower:
+        smiles_col = df.columns[cols_lower.index("canonical smiles")]
+    elif "smiles" in cols_lower:
+        smiles_col = df.columns[cols_lower.index("smiles")]
     else:
-        st.error("CSV must contain 'SMILES' or 'canonical SMILES'")
+        st.error("No SMILES column found!")
         st.stop()
 
     # Name列处理
     if "Name" not in df.columns:
         df["Name"] = "Unknown"
+
+    st.success(f"Using SMILES column: {smiles_col}")
 
     results = []
     progress = st.progress(0)
@@ -130,13 +140,14 @@ if uploaded_file:
         progress.progress((i + 1) / len(df))
 
     # ===============================
-    # 结果
+    # 输出
     # ===============================
     result_df = pd.DataFrame(results, columns=[
         "Name", "SMILES", "Probability", "Prediction"
     ])
 
     st.success("Prediction Completed")
+
     st.dataframe(result_df, use_container_width=True)
 
     # ===============================
@@ -154,10 +165,10 @@ if uploaded_file:
     # ===============================
     # 下载CSV
     # ===============================
-    csv = result_df.to_csv(index=False).encode('utf-8')
+    csv = result_df.to_csv(index=False).encode("utf-8")
 
     st.download_button(
-        label="Download Results (CSV)",
+        label="Download Results",
         data=csv,
         file_name="umami_prediction.csv",
         mime="text/csv"
