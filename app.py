@@ -31,7 +31,7 @@ model = joblib.load("model.pkl")
 descriptor_names = [desc[0] for desc in Descriptors._descList]
 calc = MoleculeDescriptors.MolecularDescriptorCalculator(descriptor_names)
 
-# 去盐（非常重要）
+# 去盐
 remover = SaltRemover.SaltRemover()
 
 # ===============================
@@ -44,7 +44,6 @@ def smiles_to_features(smiles):
     if mol is None:
         return None
 
-    # 去盐（处理Na+, Mg+等）
     mol = remover.StripMol(mol)
 
     fp = AllChem.GetMorganFingerprintAsBitVect(
@@ -60,13 +59,12 @@ def smiles_to_features(smiles):
 
     fp_cols = [f"FP_{i}" for i in range(2048)]
     desc_cols = descriptor_names
-    all_cols = fp_cols + desc_cols
 
-    return pd.DataFrame([features], columns=all_cols)
+    return pd.DataFrame([features], columns=fp_cols + desc_cols)
 
 
 # ===============================
-# 特征列（必须和训练一致）
+# 特征列
 # ===============================
 selected_features = [
     'NumSaturatedRings','FP_989','FP_1102','fr_Ndealkylation2',
@@ -77,34 +75,34 @@ selected_features = [
 best_threshold = 0.374
 
 # ===============================
-# 文件上传（支持xlsx）
+# 文件上传（CSV）
 # ===============================
 uploaded_file = st.file_uploader(
-    "Upload Excel file (.xlsx)",
-    type=["xlsx"]
+    "Upload CSV file",
+    type=["csv"]
 )
 
 if uploaded_file:
 
-    df = pd.read_excel(uploaded_file)
+    df = pd.read_csv(uploaded_file)
 
-    # ===============================
-    # 列名清洗（防止空格坑）
-    # ===============================
+    # 清洗列名
     df.columns = df.columns.str.strip()
 
-    # ===============================
-    # 必要列检查
-    # ===============================
-    if "canonical SMILES" not in df.columns:
-        st.error("Excel must contain 'canonical SMILES' column")
+    # 自动识别SMILES列
+    if "canonical SMILES" in df.columns:
+        smiles_col = "canonical SMILES"
+    elif "SMILES" in df.columns:
+        smiles_col = "SMILES"
+    else:
+        st.error("CSV must contain 'SMILES' or 'canonical SMILES'")
         st.stop()
 
+    # Name列处理
     if "Name" not in df.columns:
         df["Name"] = "Unknown"
 
     results = []
-
     progress = st.progress(0)
 
     # ===============================
@@ -113,7 +111,7 @@ if uploaded_file:
     for i, row in df.iterrows():
 
         name = row["Name"]
-        smi = row["canonical SMILES"]
+        smi = row[smiles_col]
 
         feat_df = smiles_to_features(smi)
 
@@ -132,41 +130,35 @@ if uploaded_file:
         progress.progress((i + 1) / len(df))
 
     # ===============================
-    # 结果输出
+    # 结果
     # ===============================
     result_df = pd.DataFrame(results, columns=[
         "Name", "SMILES", "Probability", "Prediction"
     ])
 
     st.success("Prediction Completed")
-
     st.dataframe(result_df, use_container_width=True)
 
     # ===============================
-    # Top 10（加分项）
+    # Top10
     # ===============================
     st.subheader("Top 10 Umami Candidates")
-    top_df = result_df.sort_values("Probability", ascending=False).head(10)
-    st.dataframe(top_df)
+    st.dataframe(result_df.sort_values("Probability", ascending=False).head(10))
 
     # ===============================
-    # 统计（加分项）
+    # 统计
     # ===============================
     st.subheader("Prediction Summary")
     st.write(result_df["Prediction"].value_counts())
 
     # ===============================
-    # 下载Excel
+    # 下载CSV
     # ===============================
-    from io import BytesIO
-
-    buffer = BytesIO()
-    result_df.to_excel(buffer, index=False)
-    buffer.seek(0)
+    csv = result_df.to_csv(index=False).encode('utf-8')
 
     st.download_button(
-        label="Download Results (Excel)",
-        data=buffer,
-        file_name="umami_prediction.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        label="Download Results (CSV)",
+        data=csv,
+        file_name="umami_prediction.csv",
+        mime="text/csv"
     )
