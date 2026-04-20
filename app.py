@@ -7,7 +7,6 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit.Chem import Descriptors
 from rdkit.ML.Descriptors import MoleculeDescriptors
-from rdkit.Chem import Draw
 
 
 # ===============================
@@ -19,94 +18,18 @@ st.set_page_config(
     layout="centered"
 )
 
-
-# ===============================
-# UI样式
-# ===============================
-st.markdown("""
-<style>
-
-/* 页面整体字体 */
-html, body, [class*="css"] {
-    font-size:22px !important;
-}
-
-/* 输入框label */
-label{
-font-size:28px !important;
-font-weight:600;
-}
-
-/* 输入框 */
-.stTextInput input{
-font-size:26px !important;
-padding:14px !important;
-border-radius:10px !important;
-}
-
-/* 按钮 */
-.stButton button{
-font-size:26px !important;
-padding:14px 40px !important;
-border-radius:12px !important;
-}
-
-/* 结果框 */
-.result-box{
-background-color:#eafaf1;
-padding:30px;
-border-radius:14px;
-text-align:center;
-font-size:36px;
-margin-top:40px;
-font-weight:700;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-
-# ===============================
-# 标题（用HTML强制放大）
-# ===============================
-st.markdown("""
-<h1 style='
-text-align:center;
-font-size:72px;
-font-weight:800;
-color:#1f2d3d;
-margin-bottom:5px;
-letter-spacing:2px;
-'>
-Umami_SFST
-</h1>
-""", unsafe_allow_html=True)
-
-st.markdown("""
-<h2 style='
-text-align:center;
-font-size:28px;
-color:#5d6d7e;
-margin-bottom:35px;
-font-weight:500;
-'>
-AI Umami Molecule Prediction System
-</h2>
-""", unsafe_allow_html=True)
-
+st.title("Umami_SFST Batch Prediction")
 
 # ===============================
 # 读取模型
 # ===============================
 model = joblib.load("model.pkl")
 
-
 # ===============================
-# RDKit描述符初始化
+# RDKit描述符
 # ===============================
 descriptor_names = [desc[0] for desc in Descriptors._descList]
 calc = MoleculeDescriptors.MolecularDescriptorCalculator(descriptor_names)
-
 
 # ===============================
 # 特征计算函数
@@ -114,11 +37,9 @@ calc = MoleculeDescriptors.MolecularDescriptorCalculator(descriptor_names)
 def smiles_to_features(smiles):
 
     mol = Chem.MolFromSmiles(smiles)
-
     if mol is None:
-        return None, None
+        return None
 
-    # Morgan fingerprint
     fp = AllChem.GetMorganFingerprintAsBitVect(
         mol,
         radius=2,
@@ -126,24 +47,19 @@ def smiles_to_features(smiles):
     )
 
     fp_array = np.array(fp)
-
-    # RDKit descriptors
     descriptors = calc.CalcDescriptors(mol)
 
     features = np.concatenate([fp_array, descriptors])
 
     fp_cols = [f"FP_{i}" for i in range(2048)]
     desc_cols = descriptor_names
-
     all_cols = fp_cols + desc_cols
 
-    df = pd.DataFrame([features], columns=all_cols)
-
-    return df, mol
+    return pd.DataFrame([features], columns=all_cols)
 
 
 # ===============================
-# 模型特征
+# 特征列
 # ===============================
 selected_features = [
 'NumSaturatedRings','FP_989','FP_1102','fr_Ndealkylation2',
@@ -151,72 +67,62 @@ selected_features = [
 'FP_1287','FP_1272','FP_841','FP_911','FP_117','FP_739','FP_1017'
 ]
 
-
-# ===============================
-# 输入区域
-# ===============================
-smiles = st.text_input(
-"Enter SMILES",
-"CC1CCCCC1NC(=O)c1cccc(OC(F)(F)F)c1"
-)
-
-
-# ===============================
-# 最佳阈值
-# ===============================
 best_threshold = 0.374
 
 
 # ===============================
-# 预测
+# 文件上传
 # ===============================
-if st.button("Predict Umami Probability"):
+uploaded_file = st.file_uploader("Upload CSV file (must contain SMILES column)", type=["csv"])
 
-    feat_df, mol = smiles_to_features(smiles)
+if uploaded_file:
 
-    if feat_df is None:
-        st.error("Invalid SMILES")
+    df = pd.read_csv(uploaded_file)
+
+    if "SMILES" not in df.columns:
+        st.error("CSV must contain a column named 'SMILES'")
         st.stop()
 
-    # 显示分子结构
-    img = Draw.MolToImage(mol, size=(350,350))
-    st.image(img, caption="Molecule Structure")
-
-    # 选择特征
-    X = feat_df[selected_features].fillna(0)
+    results = []
 
     # ===============================
-    # 预测概率
+    # 批量预测
     # ===============================
-    prob = model.predict_proba(X)[0,1]
+    for smi in df["SMILES"]:
+
+        feat_df = smiles_to_features(smi)
+
+        if feat_df is None:
+            results.append([smi, None, "Invalid"])
+            continue
+
+        X = feat_df[selected_features].fillna(0)
+
+        prob = model.predict_proba(X)[0,1]
+
+        label = "Umami" if prob >= best_threshold else "Non-Umami"
+
+        results.append([smi, prob, label])
 
     # ===============================
-    # 阈值判断
+    # 结果表
     # ===============================
-    if prob >= best_threshold:
-        label = "Umami"
-        color = "#27ae60"
-    else:
-        label = "Non-Umami"
-        color = "#c0392b"
+    result_df = pd.DataFrame(results, columns=[
+        "SMILES", "Probability", "Prediction"
+    ])
 
+    st.success("Prediction Completed")
+
+    st.dataframe(result_df)
 
     # ===============================
-    # 输出概率
+    # 下载按钮
     # ===============================
-    st.markdown(
-        f'''
-        <div class="result-box">
-        Umami probability: {prob:.4f}<br><br>
-        Best threshold: {best_threshold}<br><br>
-        Prediction: <span style="color:{color}">{label}</span>
-        </div>
-        ''',
-        unsafe_allow_html=True
+    csv = result_df.to_csv(index=False).encode('utf-8')
+
+    st.download_button(
+        label="Download Results",
+        data=csv,
+        file_name="umami_prediction.csv",
+        mime='text/csv'
     )
-
-    # ===============================
-    # 概率进度条
-    # ===============================
-    st.progress(float(prob))
-
