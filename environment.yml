@@ -8,6 +8,7 @@ dependencies:
   - rdkit
   - numpy
   - pandas
+  - openpyxl
   - scikit-learn
   - joblib
   - pip
